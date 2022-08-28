@@ -1,10 +1,14 @@
 import { Cosmos } from "@cosmostation/cosmosjs";
-import message from "@cosmostation/cosmosjs/src/messages/proto";
 import express from 'express';
 import bodyParser from "body-parser";
+import buy from './handlers/buy';
+import queryBalance from './handlers/queryBalance';
+import dotenv from 'dotenv'
+dotenv.config()
 
 
 
+    console.log(process.env.MASTER_MNEMONIC)
     const mnemonic = "receive reject rapid grocery cricket twice obey range report girl duck print embody umbrella census lawsuit twice amount flame wing maid water common despair"
     const chainId = "stakenet";
     const cosmos = new Cosmos("http://0.0.0.0:1317", chainId);
@@ -17,54 +21,43 @@ import bodyParser from "body-parser";
     const pubKeyAny = cosmos.getPubKeyAny(privKey);
 
     const app = express()
+    app.use(express.json());
     const port = 8080
 
-    app.post('/send', async (req, res) => {
-        req.body
-        const response = await testSend()
+    const STAKE_TOKEN_PRICE = 1283.25 * 10**6
+    const COSMOS_TOKEN_PRICE = 375.82 * 10**6
+
+    app.post('/buy', async (req, res) => {
+        const dollarAmount = req.body["dollarAmount"]
+        const tokenRequested = req.body["tokenRequested"]
+        const msgSender = req.body["msgSender"]
+        let price
+        if (tokenRequested == "sit") {
+            price = STAKE_TOKEN_PRICE
+        } else if (tokenRequested == "cit") {
+            price = COSMOS_TOKEN_PRICE
+        }
+
+        const tokenAmount =  parseInt(String((dollarAmount / price))*10**6)
+        const response = await buy(dollarAmount, tokenRequested, tokenAmount, msgSender)
         res.send(response)
+    })
+
+    app.post('/balance', async (req, res) => {
+        const address = req.body["address"]
+        const response = await queryBalance(address)
+        res.send(response)
+    })
+
+    app.get('/prices', async (req, res) => {
+        const prices = {
+            sit: STAKE_TOKEN_PRICE / 10**6,
+            cit: COSMOS_TOKEN_PRICE / 10**6
+        }
+        res.send(prices)
     })
 
     app.listen(port, () => {
     console.log(`Example app listening on port ${port}`)
     })
     
-    async function testSend() {
-        const res = await cosmos.getAccounts(address).then(data => {
-            // signDoc = (1)txBody + (2)authInfo
-            // ---------------------------------- (1)txBody ----------------------------------
-            const msgSend = new message.cosmos.bank.v1beta1.MsgSend({
-                from_address: address,
-                to_address: "cosmos13nakdpl03jp4wqedxq5hwx5na034fyflmyyvqe",
-                amount: [{ denom: "haus", amount: String(100) }]		// 6 decimal places (1000000 uatom = 1 ATOM)
-            });
-        
-            const msgSendAny = new message.google.protobuf.Any({
-                type_url: "/cosmos.bank.v1beta1.MsgSend",
-                value: message.cosmos.bank.v1beta1.MsgSend.encode(msgSend).finish()
-            });
-        
-            const txBody = new message.cosmos.tx.v1beta1.TxBody({ messages: [msgSendAny], memo: "" });
-        
-            // --------------------------------- (2)authInfo ---------------------------------
-            const signerInfo = new message.cosmos.tx.v1beta1.SignerInfo({
-                public_key: pubKeyAny,
-                mode_info: { single: { mode: message.cosmos.tx.signing.v1beta1.SignMode.SIGN_MODE_DIRECT } },
-                sequence: data.account.sequence
-            });
-        
-            const feeValue = new message.cosmos.tx.v1beta1.Fee({
-                amount: [{ denom: "haus", amount: String(10) }],
-                gas_limit: 200000
-            });
-        
-            const authInfo = new message.cosmos.tx.v1beta1.AuthInfo({ signer_infos: [signerInfo], fee: feeValue });
-        
-            const signedTxBytes = cosmos.sign(txBody, authInfo, data.account.account_number, privKey);
-            const txRes = cosmos.broadcast(signedTxBytes).then(response => {return response});
-            return txRes
-        });
-        console.log("ANSWER: ", res)
-        return res
-    }
-
